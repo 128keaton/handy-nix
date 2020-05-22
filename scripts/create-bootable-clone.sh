@@ -181,11 +181,6 @@ touch $WORKDIR/dev/pts
 printf "%s\n" "${blue}Enabling ping for non-admins. ${end}"
 setcap 'cap_net_admin,cap_net_raw+ep' $WORKDIR/bin/ping   # Allow non-admins to ping
 
-# Set the resolv.conf to what Aiken Workbench sets their resolv.conf to
-printf "%s\n" "${blue}Creating resolv.conf. ${end}"
-echo "nameserver ${NAMESERVER}" > $WORKDIR/etc/resolv.conf
-printf "%s\n" "${green}DNS resolves to $NAMESERVER. ${end}"
-
 printf "%s\n" "${yellow}Mounting /dev/ and /dev/pts in chroot... ${end}"
 mkdir -p -m 755 $WORKDIR/dev/pts &> /dev/null
 mount -t devtmpfs -o mode=0755,nosuid devtmpfs $WORKDIR/dev &> /dev/null
