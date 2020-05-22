@@ -90,7 +90,7 @@ mkdir -p $WORKDIR/{dev,etc,proc,tmp,sys,mnt,media/cdrom,var,boot,home,root,sbin,
 rsync -a /dev/urandom $WORKDIR/dev/
 chmod ug+rwx,o+rwt $WORKDIR/tmp
 
-printf "%s\n" "${blue}Copying system files to $WORKDIR. ${cyan}"
+printf "%s\n" "${blue}Determining files to copy from system to $WORKDIR. ${cyan}"
 
 spin &
 SPIN_PID=$!
@@ -98,6 +98,7 @@ trap 'kill -9 $SPIN_PID &>/dev/null' $(seq 0 15)
 TOTAL=$(rsync ${RSYNC_ARGS}  --dry-run  ${RSYNC_SRC} ${RSYNC_DEST} | wc -l)
 
 printf "%s\n" "${blue}$TOTAL files to copy.${cyan}"
+printf "%s\n" "${blue}Copying system files to $WORKDIR. ${cyan}"
 
 kill -9 $SPIN_PID
 rsync ${RSYNC_ARGS} ${RSYNC_SRC} ${RSYNC_DEST} | pv -lep -s $TOTAL >/dev/null
@@ -135,10 +136,20 @@ rm -rf $WORKDIR/home/er2/.xsession-errors*
 rm -rf $WORKDIR/home/er2/.gvfs
 rm -rf $WORKDIR/home/er2/.local/share/gvfs-metadata
 
-rm -rf $WORKDIR/var/lib/dbus/machine-id                                            # Fixes dbus's machine ID issue
-rm -rf $WORKDIR/etc/machine-id                                                     # Fixes dbus's machine ID issue
-rm -rf $WORKDIR/etc/systemd/system/network-online.target.wants/networking.service  # Fixes 'A start job is running for raise network interfaces'
-rm -rf $WORKDIR/lib/systemd/system/networking.service
+# Fixes dbus's machine ID issue
+rm -rf $WORKDIR/var/lib/dbus/machine-id
+rm -rf $WORKDIR/etc/machine-id
+touch $WORKDIR/var/lib/dbus/machine-id
+touch $WORKDIR/etc/machine-id
+
+# Disable waiting for network on boot because systemd can suck my ass
+printf "%s\n" "${blue}Disabling systemd network wait online service because systemd ${red}sucks ${blue}"
+systemctl disable NetworkManager-wait-online.service --root=$WORKDIR
+systemctl disable systemd-networkd-wait-online.service --root=$WORKDIR
+systemctl daemon-reload --root=$WORKDIR
+echo 'CONFIGURE_INTERFACES=no' >> $WORKDIR/etc/default/networking
+
+rm -rf $WORKDIR/var/log/journal
 
 # Creating Network Update Script
 printf "%s\n" "${blue}Creating network update script. ${end}"
@@ -161,18 +172,39 @@ chmod -R 755 $WORKDIR/run $WORKDIR/sbin $WORKDIR/bin $WORKDIR/etc $WORKDIR/home 
 chmod 755 $WORKDIR/usr                            # Fix permissions on /usr
 chown root:root $WORKDIR/usr/bin/sudo             # Set sudo to be owned by root
 chmod 4755 $WORKDIR/usr/bin/sudo                  # Set uid on sudo
-
+chmod 644 $WORKDIR/lib/systemd/system/*.service
 chown root:messagebus $WORKDIR/usr/lib/dbus-1.0/dbus-daemon-launch-helper
 chmod 4754 $WORKDIR/usr/lib/dbus-1.0/dbus-daemon-launch-helper
 chmod u+s $WORKDIR/usr/lib/dbus-1.0/dbus-daemon-launch-helper
+touch $WORKDIR/dev/pts
 
 printf "%s\n" "${blue}Enabling ping for non-admins. ${end}"
 setcap 'cap_net_admin,cap_net_raw+ep' $WORKDIR/bin/ping   # Allow non-admins to ping
 
-printf "%s\n" "${yellow}Regenerating Machine Identifier. ${end}"
+# Set the resolv.conf to what Aiken Workbench sets their resolv.conf to
+printf "%s\n" "${blue}Creating resolv.conf. ${end}"
+echo "nameserver ${NAMESERVER}" > $WORKDIR/etc/resolv.conf
+printf "%s\n" "${green}DNS resolves to $NAMESERVER. ${end}"
+
+printf "%s\n" "${yellow}Mounting /dev/ and /dev/pts in chroot... ${end}"
+mkdir -p -m 755 $WORKDIR/dev/pts &> /dev/null
+mount -t devtmpfs -o mode=0755,nosuid devtmpfs $WORKDIR/dev &> /dev/null
+mount -t devpts -o gid=5,mode=620 devpts $WORKDIR/dev/pts &> /dev/null
+
+printf "%s\n" "${yellow}Reinstalling dbus ${end}"
+spin &
+SPIN_PID=$!
+trap 'kill -9 $SPIN_PID &>/dev/null' $(seq 0 15)
+
 chroot $WORKDIR /bin/bash <<"EOT"
-dbus-uuidgen --ensure=/etc/machine-id
-dbus-uuidgen --ensure
+wget -q -O dbus.deb http://archive.ubuntu.com/ubuntu/pool/main/d/dbus/dbus_$(dpkg-query --showformat='${Version}' --show dbus)_amd64.deb
+apt install --reinstall ./dbus.deb &> /dev/null
+rm -r dbus.deb
 EOT
 
+kill -9 $SPIN_PID
+
+chmod 666 /dev/null
+umount -R $WORKDIR/dev/pts
+umount -R $WORKDIR/dev
 printf "%s\n" "${green}Done! ${end}"
