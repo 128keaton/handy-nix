@@ -1,4 +1,3 @@
-#!/bin/bash
 # Requires 'pv'
 # sudo apt install pv
 #
