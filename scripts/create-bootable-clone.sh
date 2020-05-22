@@ -138,6 +138,7 @@ rm -rf $WORKDIR/home/er2/.local/share/gvfs-metadata
 rm -rf $WORKDIR/var/lib/dbus/machine-id                                            # Fixes dbus's machine ID issue
 rm -rf $WORKDIR/etc/machine-id                                                     # Fixes dbus's machine ID issue
 rm -rf $WORKDIR/etc/systemd/system/network-online.target.wants/networking.service  # Fixes 'A start job is running for raise network interfaces'
+rm -rf $WORKDIR/lib/systemd/system/networking.service
 
 # Creating Network Update Script
 printf "%s\n" "${blue}Creating network update script. ${end}"
